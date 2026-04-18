@@ -2,11 +2,12 @@ from bs4 import BeautifulSoup
 import sqlite3
 import re
 from datetime import datetime, timedelta
+import os
 
-PLIK_HTML = 'odloty_krk_20260413_1947.html'
+PLIK_HTML = 'odloty_krk_20260417_2254.html'
 NAZWA_BAZY = 'baza_lotow_test1.db'
-SZUKANA_DATA_HTML = '13/04/2026' # Data wyświetlana na stronie
-DATA_Z_PLIKU = '2026-04-13'
+SZUKANA_DATA_HTML = '17/04/2026' # Data wyświetlana na stronie
+DATA_Z_PLIKU = '2026-04-17'
 
 def init_db():
     """Inicjalizuje bazę danych z klauzulą UNIQUE dla UPSERT."""
@@ -77,62 +78,74 @@ def process_local_html(conn):
 
     print(f"Rozpoczynam wprowadzanie lotów z dnia {SZUKANA_DATA_HTML}...")
 
-    for row in rows:
-        cols = row.find_all(['td', 'th'])
-        
-        # Jeśli wiersz ma kolumny i nie jest informacją o braku lotów
-        if len(cols) >= 4 and "Brak lotów" not in cols[0].text:
-            czas_planowany_str = cols[0].text.strip()
-            kierunek = cols[1].text.strip()
-            numer_lotu = cols[2].text.strip()
-            status_text = cols[3].text.strip()
+    try:
+        for row in rows:
+            cols = row.find_all(['td', 'th'])
             
-            if not numer_lotu or "Numer lotu" in numer_lotu:
-                continue
+            # Jeśli wiersz ma kolumny i nie jest informacją o braku lotów
+            if len(cols) >= 4 and "Brak lotów" not in cols[0].text:
+                czas_planowany_str = cols[0].text.strip()
+                kierunek = cols[1].text.strip()
+                numer_lotu = cols[2].text.strip()
+                status_text = cols[3].text.strip()
                 
-            processed_count += 1
-            
-            # Mapowanie na zgodne ze strukturą 
-            linia_lotnicza = numer_lotu.split(' ')[0] if ' ' in numer_lotu else "Nieznana"
-            
-            czas_planowany_dt = parse_time_to_datetime(czas_planowany_str, DATA_Z_PLIKU)
-            czas_rzeczywisty_dt = None
-            
-            start_match = re.search(r'Wystartował\s+(\d{2}:\d{2})', status_text, re.IGNORECASE)
-            if start_match:
-                czas_rzeczywisty_dt = parse_time_to_datetime(start_match.group(1), DATA_Z_PLIKU)
+                if not numer_lotu or "Numer lotu" in numer_lotu:
+                    continue
+                    
+                processed_count += 1
                 
-                # Zabezpieczenie przed przejściem przez północ (np. plan 23:10, start 01:05)
-                # Jeśli czas rzeczywisty jest wcześnie rano, a planowany był późno wieczorem, dodaj 1 dzień
-                if czas_rzeczywisty_dt and czas_planowany_dt:
-                    if czas_rzeczywisty_dt < czas_planowany_dt - timedelta(hours=12):
-                        czas_rzeczywisty_dt += timedelta(days=1)
+                # Mapowanie na zgodne ze strukturą 
+                linia_lotnicza = numer_lotu.split(' ')[0] if ' ' in numer_lotu else "Nieznana"
+                
+                czas_planowany_dt = parse_time_to_datetime(czas_planowany_str, DATA_Z_PLIKU)
+                czas_rzeczywisty_dt = None
+                
+                start_match = re.search(r'Wystartował\s+(\d{2}:\d{2})', status_text, re.IGNORECASE)
+                if start_match:
+                    czas_rzeczywisty_dt = parse_time_to_datetime(start_match.group(1), DATA_Z_PLIKU)
+                    
+                    # Zabezpieczenie przed przejściem przez północ (np. plan 23:10, start 01:05)
+                    # Jeśli czas rzeczywisty jest wcześnie rano, a planowany był późno wieczorem, dodaj 1 dzień
+                    if czas_rzeczywisty_dt and czas_planowany_dt:
+                        if czas_rzeczywisty_dt < czas_planowany_dt - timedelta(hours=12):
+                            czas_rzeczywisty_dt += timedelta(days=1)
 
-            czas_planowany_db = czas_planowany_dt.strftime("%Y-%m-%d %H:%M:%S") if czas_planowany_dt else None
-            czas_rzeczywisty_db = czas_rzeczywisty_dt.strftime("%Y-%m-%d %H:%M:%S") if czas_rzeczywisty_dt else None
-            
-            # Upsert do bazy
-            cursor.execute('''
-                INSERT INTO loty_odloty (
-                    data_lotu, numer_lotu, linia_lotnicza, kierunek, 
-                    czas_planowany, czas_rzeczywisty, status, ostatnia_aktualizacja
-                ) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(data_lotu, numer_lotu) 
-                DO UPDATE SET 
-                    czas_rzeczywisty = excluded.czas_rzeczywisty,
-                    status = excluded.status,
-                    ostatnia_aktualizacja = CURRENT_TIMESTAMP
-            ''', (DATA_Z_PLIKU, numer_lotu, linia_lotnicza, kierunek, 
-                  czas_planowany_db, czas_rzeczywisty_db, status_text))
-            
-            added_or_updated += 1
+                czas_planowany_db = czas_planowany_dt.strftime("%Y-%m-%d %H:%M:%S") if czas_planowany_dt else None
+                czas_rzeczywisty_db = czas_rzeczywisty_dt.strftime("%Y-%m-%d %H:%M:%S") if czas_rzeczywisty_dt else None
+                
+                # Upsert do bazy
+                cursor.execute('''
+                    INSERT INTO loty_odloty (
+                        data_lotu, numer_lotu, linia_lotnicza, kierunek, 
+                        czas_planowany, czas_rzeczywisty, status, ostatnia_aktualizacja
+                    ) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(data_lotu, numer_lotu) 
+                    DO UPDATE SET 
+                        czas_rzeczywisty = excluded.czas_rzeczywisty,
+                        status = excluded.status,
+                        ostatnia_aktualizacja = CURRENT_TIMESTAMP
+                ''', (DATA_Z_PLIKU, numer_lotu, linia_lotnicza, kierunek, 
+                    czas_planowany_db, czas_rzeczywisty_db, status_text))
+                
+                added_or_updated += 1
 
-    conn.commit()
-    print("-" * 40)
-    print("ZAKOŃCZONO PARSOWANIE")
-    print(f"Zidentyfikowano lotów w tabeli: {processed_count}")
-    print(f"Pomyślnie zaktualizowano w bazie: {added_or_updated}")
+        conn.commit()
+        print("-" * 40)
+        print("ZAKOŃCZONO PARSOWANIE")
+        print(f"Zidentyfikowano lotów w tabeli: {processed_count}")
+        print(f"Pomyślnie zaktualizowano w bazie: {added_or_updated}")
+
+        # --- SEKCJA CZYSZCZENIA ---
+        if added_or_updated > 0:
+            os.remove(PLIK_HTML)
+            print(f"PLIK USUNIĘTY: {PLIK_HTML} (dane są już bezpieczne w bazie)")
+        else:
+            print("Uwaga: Nie znaleziono danych, plik pozostawiono do inspekcji.")
+
+    except Exception as e:
+        conn.rollback() # W razie błędu wycofujemy zmiany w bazie
+        print(f"BŁĄD krytyczny: {e}. Plik {PLIK_HTML} NIE został usunięty.")
 
 if __name__ == "__main__":
     conn = init_db()
