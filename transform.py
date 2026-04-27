@@ -5,7 +5,7 @@ from datetime import datetime
 def export_to_csv():
     # Połączenie z bazą
     # Używamy uri=True i trybu ro (read-only)
-    conn = sqlite3.connect('file:baza_lotow_test1.db?mode=ro', uri=True)
+    conn = sqlite3.connect('file:baza_lotow.db?mode=ro', uri=True)
     
     print("Pobieranie danych z bazy...")
     
