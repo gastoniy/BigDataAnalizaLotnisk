@@ -1,0 +1,6 @@
+raport skad dane, jak mozna uzykac, pomysly na wykresy - opoznienia, pory, etc
+pomysly jak mozna podejsc do analizy
+nie ma wymagan minimalnych do zbioru danych
+od etapu dzisiaj do poczatku czerwca - zbieranie danych
+
+czesc danych jest syntetyczna (wygenerowana poprzez Claude[.]ai): 2026-04-{18,19,21-23}
