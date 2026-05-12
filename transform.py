@@ -10,7 +10,7 @@ def export_to_csv():
     print("Pobieranie danych z bazy...")
     
     # Pobranie całej tabeli odlotów
-    df = pd.read_sql_query("SELECT * FROM loty_odloty", conn)
+    df = pd.read_sql_query('SELECT * FROM loty_odloty WHERE status LIKE "Wystartował%"', conn)
     
     if df.empty:
         print("Baza danych jest pusta!")
