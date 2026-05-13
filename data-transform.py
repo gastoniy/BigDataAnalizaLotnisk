@@ -33,7 +33,7 @@ class FlightsTransform:
         print(f"Data saved as: {filename}")
 
 if __name__ == "__main__":
-    transformer = FlightsTransform("dataset_loty_krakow_20260512_110908.csv")
+    transformer = FlightsTransform("dataset_loty_krakow_20260513_183527.csv")
     
     data = transformer.transform(threshold_minutes=15)
     transformer.save()
