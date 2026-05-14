@@ -4,3 +4,9 @@ nie ma wymagan minimalnych do zbioru danych
 od etapu dzisiaj do poczatku czerwca - zbieranie danych
 
 czesc danych jest syntetyczna (wygenerowana poprzez Claude[.]ai): 2026-04-{18,19,21-23}
+
+
+generally make everything a number 
+
+
+przerobić na współrzędne lotniska (float lub int)
