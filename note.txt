@@ -4,3 +4,5 @@ nie ma wymagan minimalnych do zbioru danych
 od etapu dzisiaj do poczatku czerwca - zbieranie danych
 
 czesc danych jest syntetyczna (wygenerowana poprzez Claude[.]ai): 2026-04-{18,19,21-23}
+
+ML note: encoding, sanitize2.0: pozbyć się kolumn type timestamp -> int, wybrać model, balans danych -> SMOTE lub under sampling
