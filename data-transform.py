@@ -2,6 +2,8 @@ import pandas as pd
 from datetime import datetime 
 import airportsdata
 
+from sklearn.preprocessing import OneHotEncoder
+
 class FlightsTransform:
     def __init__(self, datapath: str):
         self.datapath = datapath
@@ -9,6 +11,24 @@ class FlightsTransform:
         self.df = pd.read_csv(datapath)
 
         self.aerodata = airportsdata.load('IATA')
+
+        # defining top 37 airlines based on long-term observiation
+        self.top_airlines = ['LS', 'D8', 'TK', 'IZ', 'EZY', 'A3', 'FH', '4M', 'LX',
+                             'RK', 'TOM', 'DY', 'AF', 'EJU', 'LH', 'EN', 'LG', 'PC',
+                             'ENT', 'EW', 'W4', 'FR', 'LO', 'W6', 'SK', 'OS', 'RR',
+                             'BA', 'XQ', 'LY', 'KLJ', 'MGH', 'SN', 'JU', 'EZS', 'AY',
+                             'KL']
+
+        # encoder initialization
+        self.encoder = OneHotEncoder(categories=[self.top_airlines],
+                                      handle_unknown='ignore', # if new airline would suddenly appear (which is going to be unpopular) it's going to have all 0's 
+                                      sparse_output=False # do not create csr matrix 
+                                      )
+        
+        # creating and fitting clasifier on the fake data so no matter what happens in CSV 
+        # we are getting all the columns 
+        fake_data = pd.DataFrame({'linia_lotnicza': self.top_airlines})
+        self.encoder.fit(fake_data)
 
 
     def _convert_icao(self,old_dest:str):
@@ -40,18 +60,29 @@ class FlightsTransform:
         self.df['dzien_tygodnia'] = self.df['czas_planowany'].dt.weekday
         self.df['jest_weekend'] = (self.df['dzien_tygodnia'] >= 5).astype(int)
         self.df['miesiac'] = self.df['czas_planowany'].dt.month
-
-        # classifcation
-        delay_seconds = (self.df['czas_rzeczywisty'] - self.df['czas_planowany']).dt.total_seconds()
-        self.df['czy_opozniony'] = (delay_seconds > (threshold_minutes * 60)).astype(int)
-
  
         # unix timestamp conversion
         self.df['czas_planowany_unix'] = self.df['czas_planowany'].astype('int64') // 10**9
         self.df['czas_rzeczywisty_unix'] = self.df['czas_rzeczywisty'].astype('int64') // 10**9
 
+        # Encoding airlines ICAOs 
+        # transforming (only!) based on the data in the field
+        airline_encoded = self.encoder.transform(self.df[['linia_lotnicza']])
+        
+        # get feature names for airlines 
+        encoded_cols = self.encoder.get_feature_names_out(['linia_lotnicza'])
+        # create temprary DF with airlines 
+        df_encoded = pd.DataFrame(airline_encoded, columns=encoded_cols, index=self.df.index)
+        self.df = pd.concat([self.df, df_encoded], axis=1)
+
+        # classifcation
+        delay_seconds = (self.df['czas_rzeczywisty'] - self.df['czas_planowany']).dt.total_seconds()
+        self.df['czy_opozniony'] = (delay_seconds > (threshold_minutes * 60)).astype(int)
+
         # removing old columns
-        self.df = self.df.drop(['numer_lotu', 'czas_planowany', 'czas_rzeczywisty'], axis=1)
+        self.df = self.df.drop(['linia_lotnicza', 'numer_lotu', 'czas_planowany', 'czas_rzeczywisty'], axis=1)
+        # cleaning NaN if any, may be important 
+        self.df = self.df.dropna()
 
         return self.df
     
