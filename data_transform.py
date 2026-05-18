@@ -1,37 +1,31 @@
 import pandas as pd
+import numpy as np
 from datetime import datetime 
 import airportsdata
-
 from sklearn.preprocessing import OneHotEncoder
 
 class FlightsTransform:
     def __init__(self, datapath: str):
         self.datapath = datapath
-
         self.df = pd.read_csv(datapath)
-
         self.aerodata = airportsdata.load('IATA')
 
-        # defining top 37 airlines based on long-term observiation
         self.top_airlines = ['LS', 'D8', 'TK', 'IZ', 'EZY', 'A3', 'FH', '4M', 'LX',
                              'RK', 'TOM', 'DY', 'AF', 'EJU', 'LH', 'EN', 'LG', 'PC',
                              'ENT', 'EW', 'W4', 'FR', 'LO', 'W6', 'SK', 'OS', 'RR',
                              'BA', 'XQ', 'LY', 'KLJ', 'MGH', 'SN', 'JU', 'EZS', 'AY',
                              'KL']
 
-        # encoder initialization
+        # 1hot encoder (mamy to 37 linii, inne ignorowane )
         self.encoder = OneHotEncoder(categories=[self.top_airlines],
-                                      handle_unknown='ignore', # if new airline would suddenly appear (which is going to be unpopular) it's going to have all 0's 
-                                      sparse_output=False # do not create csr matrix 
-                                      )
+                                     handle_unknown='ignore',
+                                     sparse_output=False)
         
-        # creating and fitting clasifier on the fake data so no matter what happens in CSV 
-        # we are getting all the columns 
         fake_data = pd.DataFrame({'linia_lotnicza': self.top_airlines})
         self.encoder.fit(fake_data)
 
-
-    def _convert_icao(self,old_dest:str):
+    # zamiast nazwy celu otrzymujemy koordynaty
+    def _convert_icao(self, old_dest: str):
         try:
             iata = old_dest.split('(')[-1].replace(')', '').strip()
             inf = self.aerodata.get(iata)
@@ -40,48 +34,62 @@ class FlightsTransform:
         except:
             pass
         return None, None, None 
-            
 
     def transform(self, threshold_minutes: int = 15):
-        # initial sanitization
         needed_cols = ['numer_lotu', 'linia_lotnicza', 'kierunek', 'czas_planowany', 'czas_rzeczywisty']
         self.df = self.df[needed_cols].copy()
 
-        # coordinate extraction from the destination
+        # konwersja na współrzędne
         result = self.df['kierunek'].apply(self._convert_icao)
         self.df[['lat', 'lon', 'elev']] = pd.DataFrame(result.tolist(), index=self.df.index)
         self.df = self.df.drop('kierunek', axis=1)
 
-        # converting to datetime 
+        # zapisujemy dystans do krakowa zamiast destynacji 
+        lat1, lon1 = np.radians(50.0777), np.radians(19.7848)
+        lat2, lon2 = np.radians(self.df['lat']), np.radians(self.df['lon'])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+        c = 2 * np.arcsin(np.sqrt(a))
+        self.df['dystans_km'] = 6371 * c
+
+        # konwersja datetime
         self.df['czas_planowany'] = pd.to_datetime(self.df['czas_planowany'])
         self.df['czas_rzeczywisty'] = pd.to_datetime(self.df['czas_rzeczywisty'])
 
-        # getting important fields 
-        self.df['dzien_tygodnia'] = self.df['czas_planowany'].dt.weekday
-        self.df['jest_weekend'] = (self.df['dzien_tygodnia'] >= 5).astype(int)
-        self.df['miesiac'] = self.df['czas_planowany'].dt.month
- 
-        # unix timestamp conversion
-        self.df['czas_planowany_unix'] = self.df['czas_planowany'].astype('int64') // 10**9
-        self.df['czas_rzeczywisty_unix'] = self.df['czas_rzeczywisty'].astype('int64') // 10**9
-
-        # Encoding airlines ICAOs 
-        # transforming (only!) based on the data in the field
-        airline_encoded = self.encoder.transform(self.df[['linia_lotnicza']])
+        # cze
+        dzien_tygodnia = self.df['czas_planowany'].dt.weekday
+        miesiac = self.df['czas_planowany'].dt.month
+        godzina = self.df['czas_planowany'].dt.hour
         
-        # get feature names for airlines 
-        encoded_cols = self.encoder.get_feature_names_out(['linia_lotnicza'])
-        # create temprary DF with airlines 
-        df_encoded = pd.DataFrame(airline_encoded, columns=encoded_cols, index=self.df.index)
-        self.df = pd.concat([self.df, df_encoded], axis=1)
+        # Zostawiamy flagi binarne i dni miesiąca (bo dni miesiąca 1-31 nie są idealnie cykliczne)
+        self.df['jest_weekend'] = (dzien_tygodnia >= 5).astype(int)
+        self.df['dzien_miesiaca'] = self.df['czas_planowany'].dt.day
 
-        # classifcation
+        # kodowanie godziny jako sin i cos dla zachowania cylkiczności 
+        self.df['godzina_sin'] = np.sin(2 * np.pi * godzina / 24.0)
+        self.df['godzina_cos'] = np.cos(2 * np.pi * godzina / 24.0)
+
+        # dzień tygodnia
+        self.df['dzien_tyg_sin'] = np.sin(2 * np.pi * dzien_tygodnia / 7.0)
+        self.df['dzien_tyg_cos'] = np.cos(2 * np.pi * dzien_tygodnia / 7.0)
+
+        # miesiąc 
+        self.df['miesiac_sin'] = np.sin(2 * np.pi * miesiac / 12.0)
+        self.df['miesiac_cos'] = np.cos(2 * np.pi * miesiac / 12.0)
+
+        # wyliczanie label
         delay_seconds = (self.df['czas_rzeczywisty'] - self.df['czas_planowany']).dt.total_seconds()
         self.df['czy_opozniony'] = (delay_seconds > (threshold_minutes * 60)).astype(int)
 
-        # removing old columns
+        # 1 hot encoding linii lotniczej 
+        airline_encoded = self.encoder.transform(self.df[['linia_lotnicza']])
+        encoded_cols = self.encoder.get_feature_names_out(['linia_lotnicza'])
+        df_encoded = pd.DataFrame(airline_encoded, columns=encoded_cols, index=self.df.index)
+        self.df = pd.concat([self.df, df_encoded], axis=1)
+
+        # czyszczenie niepotrzebnych danych
         self.df = self.df.drop(['linia_lotnicza', 'numer_lotu', 'czas_planowany', 'czas_rzeczywisty'], axis=1)
-        # cleaning NaN if any, may be important 
         self.df = self.df.dropna()
 
         return self.df
@@ -89,15 +97,13 @@ class FlightsTransform:
     def save(self):
         savedate = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"sanitized_pandas_{savedate}.csv"
-        
         self.df.to_csv(filename, index=False, encoding="utf-8")
         print(f"Data saved as: {filename}")
 
 if __name__ == "__main__":
     transformer = FlightsTransform("dataset_loty_krakow_20260513_183527.csv")
-    
     data = transformer.transform(threshold_minutes=15)
     transformer.save()
     
-    print("\Data sample:")
-    print(data.head(3))
+    print("Data sample:")
+    print(data[['dystans_km', 'godzina_sin', 'godzina_cos', 'czy_opozniony']].head(3))
