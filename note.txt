@@ -9,3 +9,6 @@ ML note: encoding, sanitize2.0: pozbyć się kolumn type timestamp -> int, wybra
 
 generally make everything a number 
 przerobić na współrzędne lotniska (float lub int)
+
+ML note (19.05): Wszystko wygląda dobrze, warto olać kolumnę czas rzeczywisty w zbiorach treningowych i testowych, aby nie było
+    data leakage. Spróbować SMOTE lub under sampling. Wytrenować dane na obecnym zbiorze a testować na nowych paczkach danych
