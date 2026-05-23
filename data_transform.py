@@ -5,6 +5,9 @@ import airportsdata
 from time import sleep
 
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTETomek, SMOTEENN
 
 class FlightsTransform:
     def __init__(self, datapath: str):
@@ -46,6 +49,10 @@ class FlightsTransform:
     # Kraków airport coordinates (EPKK)
     _KRK_LAT = np.radians(50.0777)
     _KRK_LON = np.radians(19.7848)
+    
+    # Resampling Methods
+    _RESAMPLE_METHODS = ('smote', 'undersample', 'smoteenn', 'smotetomek')
+
 
     def _convert_icao(self, old_dest: str):
         try:
@@ -161,26 +168,100 @@ class FlightsTransform:
 
         return self.df
 
-    def transform(self, threshold_minutes: int = 15, encoding: str = 'onehot') -> pd.DataFrame:
+    def resample(self, method: str, random_state: int = 42) -> pd.DataFrame:
+        """
+        Step 3 (optional) — rebalance the dataset by over- or under-sampling.
+        Must be called after an encoding step (one_hot_encode or label_encode),
+        because all features must be numeric before resampling.
+
+        Available methods:
+            'smote'       — SMOTE 
+            'undersample' — RandomUnderSampler
+
+            Testing Stage (may not be in final version):
+            'smoteenn'    — SMOTEENN: SMOTE followed by Edited Nearest Neighbours
+                            cleaning. Adds synthetic minority samples then removes
+                            noisy / borderline samples from both classes.
+            'smotetomek'  — SMOTETomek: SMOTE followed by Tomek Links removal.
+                            Gentler cleaning than ENN; keeps more samples overall.
+
+        Args:
+            method:       One of 'smote', 'undersample', 'smoteenn', 'smotetomek'.
+            random_state: Seed for reproducibility (default 42).
+
+        Returns:
+            Resampled DataFrame; self.df is updated in-place.
+        """
+        if method not in self._RESAMPLE_METHODS:
+            raise ValueError(
+                f"Unknown resampling method '{method}'. "
+                f"Choose one of: {self._RESAMPLE_METHODS}."
+            )
+        if 'linia_lotnicza' in self.df.columns:
+            raise ValueError(
+                "Raw 'linia_lotnicza' column still present. "
+                "Run one_hot_encode() or label_encode() before resample()."
+            )
+        if 'czy_opozniony' not in self.df.columns:
+            raise ValueError("Target column 'czy_opozniony' not found. Run preprocess() first.")
+
+        X = self.df.drop('czy_opozniony', axis=1)
+        y = self.df['czy_opozniony']
+
+        samplers = {
+            'smote':       SMOTE(random_state=random_state),
+            'undersample': RandomUnderSampler(random_state=random_state),
+            'smoteenn':    SMOTEENN(random_state=random_state),
+            'smotetomek':  SMOTETomek(random_state=random_state),
+        }
+
+        X_res, y_res = samplers[method].fit_resample(X, y)
+
+        self.df = pd.DataFrame(X_res, columns=X.columns)
+        self.df['czy_opozniony'] = y_res.values
+
+        return self.df
+
+    def transform(
+        self,
+        threshold_minutes: int = 15,
+        encoding: str = 'onehot',
+        resampling: str | None = None,
+        random_state: int = 42,
+    ) -> pd.DataFrame:
         """
         Convenience orchestrator that runs the full pipeline in one call.
 
         Args:
             threshold_minutes: Passed through to preprocess().
-            encoding: 'onehot' (default) or 'label' — selects the encoding step.
+            encoding:          'onehot' (default) or 'label'.
+            resampling:        Optional resampling step applied after encoding.
+                               One of 'smote', 'undersample', 'smoteenn',
+                               'smotetomek', or None (default — no resampling).
+            random_state:      Seed forwarded to resample() when resampling is set.
 
         Returns:
-            Fully transformed DataFrame.
+            Fully transformed (and optionally resampled) DataFrame.
         """
         if encoding not in ('onehot', 'label'):
             raise ValueError(f"Unknown encoding '{encoding}'. Choose 'onehot' or 'label'.")
+        if resampling is not None and resampling not in self._RESAMPLE_METHODS:
+            raise ValueError(
+                f"Unknown resampling method '{resampling}'. "
+                f"Choose one of: {self._RESAMPLE_METHODS}, or None."
+            )
 
         self.preprocess(threshold_minutes=threshold_minutes)
 
         if encoding == 'onehot':
-            return self.one_hot_encode()
+            self.one_hot_encode()
         else:
-            return self.label_encode()
+            self.label_encode()
+
+        if resampling is not None:
+            self.resample(method=resampling, random_state=random_state)
+
+        return self.df
 
     def save(self):
         savedate = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -189,16 +270,28 @@ class FlightsTransform:
         print(f"Data saved as: {filename}")
 
 if __name__ == "__main__":
-    transformer = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    data_ohe = transformer.transform(threshold_minutes=15, encoding='onehot')
-    transformer.save()
-    print("OHE sample:")
-    print(data_ohe.head(3))
+    # Tests (we are so cooked)
 
+    # OHE + SMOTE oversampling
+    transformer3 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
+    data_smote = transformer3.transform(threshold_minutes=15, encoding='onehot', resampling='smote')
+    # transformer3.save()
+    print("\nOHE + SMOTE class distribution:")
+    print(data_smote['czy_opozniony'].value_counts())
     sleep(1)
 
-    transformer2 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    data_label = transformer2.transform(threshold_minutes=15, encoding='label')
-    transformer2.save()
-    print("\nLabel encoding sample:")
-    print(data_label.head(3))
+    # Label + Undersampling
+    transformer4 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
+    data_under = transformer4.transform(threshold_minutes=15, encoding="label", resampling="undersample")
+    # transformer4.save()
+    print("\nLabel + Undersmaple class distribution:")
+    print(data_under['czy_opozniony'].value_counts())
+    sleep(1)
+
+    # Label + smotetomek
+    transformer5 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
+    data_smotetomek = transformer5.transform(threshold_minutes=15, encoding="label", resampling="smotetomek")
+    # transformer5.save()
+    print("\nLabel + SMOTETomek class distribution:")
+    print(data_smotetomek['czy_opozniony'].value_counts())
+    sleep(1)
