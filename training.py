@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix
-from data_transform_alt import FlightsTransform # transformation module 
+from data_transform import FlightsTransform # transformation module 
 
 # initial transform of the raw data block 
 transformer = FlightsTransform("dataset_loty_krakow_20260518_183551.csv")
