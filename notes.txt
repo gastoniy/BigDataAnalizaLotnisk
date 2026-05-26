@@ -1,0 +1,3 @@
+ohe hot encoder -- sclearn -- we can code each thing as numer so classifier would work
+
+data może być timestamp od jakiejś daty (np. od 1 daty w miesiącu) -- timestamp do normalizacji potem 

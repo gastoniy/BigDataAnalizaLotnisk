@@ -123,8 +123,10 @@ class TrainingClass():
 
         # finding the best model 
         best_model_name = max(global_results, key=lambda k: global_results[k]['f1_mean'])
+
         print(f"\nBest model based on F1: {best_model_name}. Training production version...")
-        
+
+'''            
         final_model = self.MODEL_SELECTION[best_model_name]
         
         # preparing all data for the model to train on. 
@@ -137,9 +139,10 @@ class TrainingClass():
         # dumping the final model 
         joblib.dump(final_model, 'flights_production_model.joblib')
         print("Production model successfully saved as 'flights_production_model.joblib'!")
+'''
 
 
 if __name__ == "__main__":
-    trainer = TrainingClass(data_path="dataset_loty_krakow_20260513_183527.csv", threshold=15)
+    trainer = TrainingClass(data_path="dataset_loty_krakow_20260521_213240.csv", threshold=15)
     
     trainer.train_test_cv(balance=True)
