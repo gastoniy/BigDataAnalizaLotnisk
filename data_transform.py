@@ -4,8 +4,13 @@ from datetime import datetime
 import airportsdata
 from time import sleep
 
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler, RobustScaler, MinMaxScaler
+from sklearn.preprocessing import (
+    OneHotEncoder, OrdinalEncoder,
+    StandardScaler, RobustScaler, MinMaxScaler,
+    FunctionTransformer,
+)
 from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.combine import SMOTETomek, SMOTEENN
@@ -75,8 +80,10 @@ class FlightsTransform:
 
     def preprocess(self, threshold_minutes: int = 15) -> pd.DataFrame:
         """
-        Step 1 — sanitize columns, extract coordinates, compute distance from Krakow,
+        Step 1 — sanitize columns, extract coordinates, compute distance from Kraków,
         build cyclic datetime features, derive the delay label, and drop raw columns.
+        Leaves 'linia_lotnicza' in the DataFrame so either encoding method can
+        be applied afterwards.
 
         Args:
             threshold_minutes: Delay threshold in minutes for the 'czy_opozniony' label.
@@ -90,26 +97,26 @@ class FlightsTransform:
         needed_cols = ['numer_lotu', 'linia_lotnicza', 'kierunek', 'czas_planowany', 'czas_rzeczywisty']
         self.df = self.df[needed_cols].copy()
 
-        # coordinates & distance 
+        # --- coordinates & distance ---
         result = self.df['kierunek'].apply(self._convert_icao)
         self.df[['lat', 'lon', 'elev']] = pd.DataFrame(result.tolist(), index=self.df.index)
         self.df['dystans_km'] = self._haversine_from_krakow(self.df['lat'], self.df['lon'])
         self.df = self.df.drop('kierunek', axis=1)
 
-        # datetime parsing
+        # --- datetime parsing ---
         self.df['czas_planowany'] = pd.to_datetime(self.df['czas_planowany'])
         self.df['czas_rzeczywisty'] = pd.to_datetime(self.df['czas_rzeczywisty'])
 
-        # raw time components (used for cyclic encoding below)
+        # --- raw time components (used for cyclic encoding below) ---
         godzina      = self.df['czas_planowany'].dt.hour
         dzien_tygodnia = self.df['czas_planowany'].dt.weekday
         miesiac      = self.df['czas_planowany'].dt.month
 
-        # binary / ordinal features
+        # --- binary / ordinal features ---
         self.df['jest_weekend']   = (dzien_tygodnia >= 5).astype(int)
         self.df['dzien_miesiaca'] = self.df['czas_planowany'].dt.day
 
-        # cyclic encoding (sin + cos preserve distance between periodic values)
+        # --- cyclic encoding (sin + cos preserve distance between periodic values) ---
         self.df['godzina_sin']    = np.sin(2 * np.pi * godzina      / 24.0)
         self.df['godzina_cos']    = np.cos(2 * np.pi * godzina      / 24.0)
         self.df['dzien_tyg_sin']  = np.sin(2 * np.pi * dzien_tygodnia /  7.0)
@@ -117,11 +124,11 @@ class FlightsTransform:
         self.df['miesiac_sin']    = np.sin(2 * np.pi * miesiac       / 12.0)
         self.df['miesiac_cos']    = np.cos(2 * np.pi * miesiac       / 12.0)
 
-        # classification label
+        # --- classification label ---
         delay_seconds = (self.df['czas_rzeczywisty'] - self.df['czas_planowany']).dt.total_seconds()
         self.df['czy_opozniony'] = (delay_seconds > (threshold_minutes * 60)).astype(int)
 
-        # drop raw columns (airline encoding happens in a separate step)
+        # --- drop raw columns (airline encoding happens in a separate step) ---
         self.df = self.df.drop(['numer_lotu', 'czas_planowany', 'czas_rzeczywisty'], axis=1)
         self.df = self.df.dropna()
 
@@ -176,21 +183,131 @@ class FlightsTransform:
     # cyclic sin/cos columns, linia_lotnicza_label, OHE columns, and the target
     # are intentionally excluded — scaling them would corrupt their meaning
 
+    def get_scaler(self) -> ColumnTransformer:
+        """
+        Factory — returns a fresh, unfitted ColumnTransformer with the column-specific
+        scaling strategy for this dataset.
+
+        Intended use: call once per CV fold so each fold fits its own scaler on
+        training data only, preventing leakage from the test split.
+
+            scaler = ft.get_scaler()
+            X_train = pd.DataFrame(
+                scaler.fit_transform(X_train), columns=scaler.get_feature_names_out()
+            )
+            X_test = pd.DataFrame(
+                scaler.transform(X_test), columns=scaler.get_feature_names_out()
+            )
+
+        Scaling strategy:
+            StandardScaler   lat            — near-normal (skew −0.14), few outliers
+            RobustScaler     lon, elev      — skewed / heavy outliers; median+IQR
+            log1p→Standard   dystans_km     — extreme right skew (+4.20); log compression
+                                              via FunctionTransformer inside a Pipeline
+            MinMaxScaler     dzien_miesiaca — bounded [1, 30], uniform, zero outliers
+
+        Columns left at remainder='passthrough' (intentionally unscaled):
+            sin/cos cyclic features  — already in [−1, 1]
+            linia_lotnicza_label     — nominal integer; scaling implies false ordinality
+            OHE airline columns      — binary indicators
+            czy_opozniony            — target; never scale
+
+        Returns:
+            Unfitted ColumnTransformer ready for fit_transform / transform.
+        """
+        log_pipeline = Pipeline([
+            ('log1p',   FunctionTransformer(np.log1p, validate=False, feature_names_out='one-to-one')),
+            ('standard', StandardScaler()),
+        ])
+
+        # guard: only include a group if all its columns exist in the current df
+        # (allows calling get_scaler() before or after encoding without errors)
+        def _present(cols):
+            return [c for c in cols if c in self.df.columns]
+
+        transformers = []
+        if _present(self._STD_COLS):
+            transformers.append(('standard', StandardScaler(),  _present(self._STD_COLS)))
+        if _present(self._ROBUST_COLS):
+            transformers.append(('robust',   RobustScaler(),    _present(self._ROBUST_COLS)))
+        if _present(self._LOG_COLS):
+            transformers.append(('log_std',  log_pipeline,      _present(self._LOG_COLS)))
+        if _present(self._MM_COLS):
+            transformers.append(('minmax',   MinMaxScaler(),    _present(self._MM_COLS)))
+
+        return ColumnTransformer(
+            transformers=transformers,
+            remainder='passthrough',
+            verbose_feature_names_out=False,
+        )
+
+    def get_resampler(self, method: str, random_state: int = 42):
+        """
+        Factory — returns a fresh, unfitted imblearn sampler for the given method.
+
+        Intended use: call once per CV fold so each fold's sampler is independent.
+
+            resampler = ft.get_resampler('smote')
+            X_train, y_train = resampler.fit_resample(X_train, y_train)
+
+        Args:
+            method:       One of 'smote', 'undersample', 'smoteenn', 'smotetomek'.
+            random_state: Seed for reproducibility (default 42).
+
+        Returns:
+            Unfitted sampler ready for fit_resample.
+        """
+        if method not in self._RESAMPLE_METHODS:
+            raise ValueError(
+                f"Unknown resampling method '{method}'. "
+                f"Choose one of: {self._RESAMPLE_METHODS}."
+            )
+        return {
+            'smote':       SMOTE(random_state=random_state),
+            'undersample': RandomUnderSampler(random_state=random_state),
+            'smoteenn':    SMOTEENN(random_state=random_state),
+            'smotetomek':  SMOTETomek(random_state=random_state),
+        }[method]
+
+    def load_xy(
+        self,
+        threshold_minutes: int = 15,
+        encoding: str = 'onehot',
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """
+        Convenience loader — runs preprocess() and the chosen encoding step, then
+        splits the result into features X and target y.
+
+        Scaling and resampling are intentionally excluded: both must be fitted
+        inside each CV fold on training data only to prevent leakage.
+
+        Args:
+            threshold_minutes: Passed through to preprocess().
+            encoding:          'onehot' (default) or 'label'.
+
+        Returns:
+            (X, y) where X is the feature DataFrame and y is the binary target Series.
+        """
+        if encoding not in ('onehot', 'label'):
+            raise ValueError(f"Unknown encoding '{encoding}'. Choose 'onehot' or 'label'.")
+
+        self.preprocess(threshold_minutes=threshold_minutes)
+
+        if encoding == 'onehot':
+            self.one_hot_encode()
+        else:
+            self.label_encode()
+
+        return self.df.drop('czy_opozniony', axis=1), self.df['czy_opozniony']
+
     def scale(self) -> pd.DataFrame:
         """
-        Step 3 (optional) — apply column-specific scaling to continuous features.
-        Must be called after an encoding step (one_hot_encode or label_encode).
+        Step 3 (optional) — apply column-specific scaling to the full dataset in-place.
+        Uses get_scaler() internally so the strategy is defined in one place.
+        Stores the fitted scaler in self.scaler for serialisation or reuse.
 
-        Scaling strategy per column group:
-
-            StandardScaler   lat            — near-normal (skew −0.14), few outliers
-            RobustScaler     lon, elev      — skewed or heavy outliers; median+IQR is robust
-            log1p+Standard   dystans_km     — extreme right skew (+4.20); log compression
-                                              brings the distribution close to normal first
-            MinMaxScaler     dzien_miesiaca — bounded [1, 30], uniform, zero outliers → [0, 1]
-
-        The fitted ColumnTransformer is stored in self.scaler for serialisation or
-        reuse on new data.
+        Note: this method is for whole-dataset transformations (e.g. saving a
+        pre-scaled CSV). For CV training use get_scaler() per fold instead.
 
         Returns:
             DataFrame with scaled continuous columns; all other columns unchanged.
@@ -201,31 +318,7 @@ class FlightsTransform:
                 "Run one_hot_encode() or label_encode() before scale()."
             )
 
-        # only scale columns that actually exist (in case preprocess wasn't run)
-        std_cols    = [c for c in self._STD_COLS    if c in self.df.columns]
-        robust_cols = [c for c in self._ROBUST_COLS if c in self.df.columns]
-        log_cols    = [c for c in self._LOG_COLS    if c in self.df.columns]
-        mm_cols     = [c for c in self._MM_COLS     if c in self.df.columns]
-
-        # log1p-transform skewed columns before passing them to StandardScaler
-        for col in log_cols:
-            self.df[col] = np.log1p(self.df[col])
-
-        transformers = []
-        if std_cols:
-            transformers.append(('standard', StandardScaler(), std_cols))
-        if robust_cols:
-            transformers.append(('robust',   RobustScaler(),   robust_cols))
-        if log_cols:
-            transformers.append(('log_std',  StandardScaler(), log_cols))
-        if mm_cols:
-            transformers.append(('minmax',   MinMaxScaler(),   mm_cols))
-
-        self.scaler = ColumnTransformer(
-            transformers=transformers,
-            remainder='passthrough',   # all other columns pass through unchanged
-            verbose_feature_names_out=False,
-        )
+        self.scaler = self.get_scaler()
 
         scaled_array = self.scaler.fit_transform(self.df)
         self.df = pd.DataFrame(
@@ -245,8 +338,12 @@ class FlightsTransform:
         because all features must be numeric before resampling.
 
         Available methods:
-            'smote'       — SMOTE 
-            'undersample' — RandomUnderSampler
+            'smote'       — SMOTE oversampling: synthesises new minority-class
+                            rows by interpolating between existing neighbours.
+                            Increases dataset size.
+            'undersample' — RandomUnderSampler: randomly removes majority-class
+                            rows until classes are balanced.
+                            Decreases dataset size.
             'smoteenn'    — SMOTEENN: SMOTE followed by Edited Nearest Neighbours
                             cleaning. Adds synthetic minority samples then removes
                             noisy / borderline samples from both classes.
@@ -295,7 +392,7 @@ class FlightsTransform:
         threshold_minutes: int = 15,
         encoding: str = 'onehot',
         scaling: bool = False,
-        resampling: str | None = None,
+        resampling: str = None,
         random_state: int = 42,
     ) -> pd.DataFrame:
         """
@@ -350,29 +447,36 @@ class FlightsTransform:
         print(f"Data saved as: {filename}")
 
 if __name__ == "__main__":
-    # Tests
-    # OHE, no scaling, no resampling (default)
+    # --- OHE, no scaling, no resampling (default) ---
     transformer = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
     data_ohe = transformer.transform(threshold_minutes=15, encoding='onehot')
     # transformer.save()
     print("OHE sample:")
     print(data_ohe.head(3))
-    sleep(1)
 
-    # Label + scaling + SMOTE (full pipeline via transform)
+    # --- label encoding + scaling (step-by-step) ---
+    transformer2 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
+    transformer2.preprocess(threshold_minutes=15)
+    transformer2.label_encode()
+    data_scaled = transformer2.scale()
+    # transformer2.save()
+    print("\nLabel + scaled sample (continuous cols):")
+    print(data_scaled[['lat', 'lon', 'elev', 'dystans_km', 'dzien_miesiaca']].describe().round(3))
+
+    # --- OHE + scaling + Under (full pipeline via transform) ---
     transformer3 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
     data_full = transformer3.transform(
         threshold_minutes=15,
-        encoding='label',
+        encoding='onehot',
         scaling=True,
-        resampling='smote',
+        resampling='undersample',
     )
     transformer3.save()
-    print("\nLabel + scaled + SMOTE class distribution:")
+    print("\nOHE + scaled + Under class distribution:")
     print(data_full['czy_opozniony'].value_counts())
     sleep(1)
 
-    # label encoding + undersampling, no scaling
+    # --- label encoding + undersampling, no scaling ---
     transformer4 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
     transformer4.preprocess(threshold_minutes=15)
     transformer4.label_encode()
