@@ -12,3 +12,9 @@ przerobić na współrzędne lotniska (float lub int)
 
 ML note (19.05): Wszystko wygląda dobrze, warto olać kolumnę czas rzeczywisty w zbiorach treningowych i testowych, aby nie było
     data leakage. Spróbować SMOTE lub under sampling. Wytrenować dane na obecnym zbiorze a testować na nowych paczkach danych
+
+ML note (28.05):
+- PCA?
+- Dwa wizualizacji - każda cecha z każdą w 2D scatter plot
+- Eksperymenty pokazywać na wykresach
+- Eksperyment z danymi z gotowego zbioru

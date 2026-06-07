@@ -180,8 +180,6 @@ class FlightsTransform:
     _ROBUST_COLS = ['lon', 'elev']       # skewed / many outliers → median + IQR
     _LOG_COLS    = ['dystans_km']        # extreme right skew (skew +4.2) → log1p then z-score
     _MM_COLS     = ['dzien_miesiaca']    # bounded uniform, no outliers → [0, 1]
-    # cyclic sin/cos columns, linia_lotnicza_label, OHE columns, and the target
-    # are intentionally excluded — scaling them would corrupt their meaning
 
     def get_scaler(self) -> ColumnTransformer:
         """
@@ -205,12 +203,6 @@ class FlightsTransform:
             log1p→Standard   dystans_km     — extreme right skew (+4.20); log compression
                                               via FunctionTransformer inside a Pipeline
             MinMaxScaler     dzien_miesiaca — bounded [1, 30], uniform, zero outliers
-
-        Columns left at remainder='passthrough' (intentionally unscaled):
-            sin/cos cyclic features  — already in [−1, 1]
-            linia_lotnicza_label     — nominal integer; scaling implies false ordinality
-            OHE airline columns      — binary indicators
-            czy_opozniony            — target; never scale
 
         Returns:
             Unfitted ColumnTransformer ready for fit_transform / transform.

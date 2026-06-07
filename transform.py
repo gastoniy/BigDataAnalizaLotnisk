@@ -9,11 +9,19 @@ def export_to_csv():
     
     print("Pobieranie danych z bazy...")
     
-    # Pobranie całej tabeli odlotów
-    df = pd.read_sql_query('SELECT * FROM loty_odloty WHERE status LIKE "Wystartował%"', conn)
+    # Modyfikacja zapytania SQL:
+    # Pobieramy zarówno loty zrealizowane, jak i odwołane.
+    # Status "Szum" (oraz potencjalne inne śmieci) jest automatycznie ignorowany.
+    zapytanie_sql = '''
+        SELECT * FROM loty_odloty 
+        WHERE status LIKE 'Wystartował%' 
+           OR status LIKE 'Odwołany%'
+    '''
+    
+    df = pd.read_sql_query(zapytanie_sql, conn)
     
     if df.empty:
-        print("Baza danych jest pusta!")
+        print("Baza danych jest pusta lub nie znaleziono pasujących lotów!")
         return
 
     # Zapis do CSV
@@ -24,8 +32,14 @@ def export_to_csv():
     df.to_csv(nazwa_pliku, index=False, encoding='utf-8')
     
     print(f"Sukces! Wyeksportowano {len(df)} rekordów do pliku {nazwa_pliku}")
-    print("\nPróbka pobranych danych:")
-    print(df[['numer_lotu', 'kierunek', 'czas_planowany', 'czas_rzeczywisty']].head())
+    
+    # Zmieniono podgląd, aby pokazywał kolumnę status, ułatwiając weryfikację
+    print("\nPróbka pobranych danych (z uwzględnieniem statusu):")
+    print(df[['numer_lotu', 'kierunek', 'czas_planowany', 'status']].head())
+    
+    # Dodatkowe podsumowanie pokazujące, ile lotów wystartowało, a ile odwołano
+    print("\nPodsumowanie wyeksportowanych statusów:")
+    print(df['status'].value_counts().head())
     
     conn.close()
 

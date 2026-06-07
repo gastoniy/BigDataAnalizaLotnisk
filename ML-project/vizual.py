@@ -5,7 +5,7 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
 import numpy as np
 
-DB_PATH = "baza_lotow.db.link"
+DB_PATH = "baza_lotow.db"
 PROG_OPOZNIENIA = 15
 PROG_OPOZNIENIA_PROCENT_LOTY = 20
 PROG_OPOZNIENIA_PROCENT_LINIE = 25
