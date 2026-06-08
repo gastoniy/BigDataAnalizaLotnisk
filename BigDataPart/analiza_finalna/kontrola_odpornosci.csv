@@ -1,0 +1,5 @@
+pytanie,test_parametryczny,test_rangowy,rozbieznosc
+Weekend vs roboczy,t-Studenta: istotny (p=0.000941),Mann-Whitney: nieistotny (p=0.582),TAK — ufaj rangowemu
+Pora dnia,ANOVA: istotny (p=3.92e-29),Kruskal-Wallis: istotny (p=1.38e-50),nie
+Godzina ↔ opóźnienie,Pearson: istotny (p=1.07e-32),Spearman: istotny (p=1.78e-67),nie
+Dystans ↔ opóźnienie,Pearson: istotny (p=0.000206),Spearman: istotny (p=1.71e-12),nie

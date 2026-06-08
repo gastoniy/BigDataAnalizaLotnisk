@@ -1,0 +1,3 @@
+para,rho,ci95,p,interpretacja,werdykt
+godzina_planowana ↔ opóźnienie,0.209,[0.19 0.23],1.779072898657728e-67,słaba,istotny
+dystans_km ↔ opóźnienie,0.086,[0.06 0.11],1.7068829874717943e-12,znikoma,istotny

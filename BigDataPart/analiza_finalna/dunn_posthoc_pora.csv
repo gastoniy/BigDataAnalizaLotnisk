@@ -1,0 +1,7 @@
+para,mediana_a,mediana_b,p_bonferroni,werdykt
+Rano vs Wieczór,8.0,12.0,5.046097478882548e-38,istotny
+Popołudnie vs Rano,11.0,8.0,3.052334703675046e-25,istotny
+Noc vs Rano,16.0,8.0,7.926581536014833e-19,istotny
+Noc vs Popołudnie,16.0,11.0,0.000611599824681215,istotny
+Noc vs Wieczór,16.0,12.0,0.0411873012406729,istotny
+Popołudnie vs Wieczór,11.0,12.0,0.12343359840963315,nieistotny

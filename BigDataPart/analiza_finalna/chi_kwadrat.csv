@@ -1,0 +1,4 @@
+test,chi2,dof,p,cramera_v,sila,werdykt
+pora_dnia × czy_opozniony,232.17,3,4.690719573337227e-50,0.185,słaby,istotny
+czy_weekend × czy_opozniony,6.81,1,0.009062964468252152,0.032,znikomy,istotny
+linia × czy_odwolany,343.71,21,3.6946205375158247e-60,0.227,słaby,istotny
