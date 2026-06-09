@@ -119,7 +119,7 @@ H = 234.6; df = 3; p = 1.38e-50; ε² = 0.035 (efekt mały) → **istotny**
 
 ## 10. Strażnik efektu — wyniki istotne, lecz praktycznie trywialne
 
-- ⚠️ Kruskal (linie): istotny, lecz ε²=0.059 (mały) — efekt mały praktycznie.
-- ⚠️ Kruskal (pora dnia): istotny, lecz ε²=0.035 (mały).
-- ⚠️ Spearman (dystans_km ↔ opóźnienie): istotny, lecz ρ=0.086 (znikomy).
-- ⚠️ Chi² (czy_weekend × czy_opozniony): istotny, lecz V=0.032 (znikomy).
+- Kruskal (linie): istotny, ale ε²=0.059 (mały).
+- Kruskal (pora dnia): istotny, ale ε²=0.035 (mały).
+- Spearman (dystans_km ↔ opóźnienie): istotny, ale ρ=0.086 (znikomy).
+- Chi² (czy_weekend × czy_opozniony): istotny, ale V=0.032 (znikomy).

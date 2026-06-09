@@ -1,18 +1,3 @@
-"""
-Preprocessing danych o odlotach z lotniska Kraków-Balice (KRK) pod analizę EDA.
-
-Wersja ulepszona względem ../preprocess-analize.py — zawiera poprawki:
-  * korekta przejścia przez północ (loty po 00:00 nie są już błędnie zerowane),
-  * deduplikacja rekordów (scraper działa w trybie INSERT/UPDATE),
-  * dni tygodnia trzymane jako liczba + jeden słownik PL (brak zależności od locale),
-  * surowe (ze znakiem) opóźnienie obok wersji operacyjnej (wyzerowanej),
-  * detekcja anomalii oparta na regule IQR (deterministyczna, interpretowalna),
-oraz wzbogacenie zbioru: dystans od KRK, kategorie opóźnień, miesiąc, numer tygodnia.
-
-Źródło danych: SQLite baza_lotow.db (ta sama logika filtra co transform.py),
-opcjonalnie ścieżka do surowego CSV (zrzut SELECT * z loty_odloty).
-"""
-
 import os
 import sqlite3
 
@@ -20,16 +5,16 @@ import numpy as np
 import pandas as pd
 import airportsdata
 
-# --- ścieżki domyślne (folder BigDataPart leży obok bazy danych) ---
+# ścieżki domyślne
 _TU = os.path.dirname(os.path.abspath(__file__))
 DOMYSLNA_BAZA = os.path.join(_TU, "..", "baza_lotow.db")
 DOMYSLNE_WYJSCIE = os.path.join(_TU, "dataset_eda_ready.csv")
 
-# --- współrzędne lotniska Kraków-Balice (EPKK) ---
+# współrzędne lotniska Kraków (EPKK)
 KRK_LAT = np.radians(50.0777)
 KRK_LON = np.radians(19.7848)
 
-# --- mapowanie dni tygodnia w jednym miejscu (0 = poniedziałek) ---
+# mapowanie dni tygodnia w jednym miejscu (0 = poniedziałek)
 DNI_PL = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"]
 PORY_DNIA = ["Rano", "Popołudnie", "Wieczór", "Noc"]
 KATEGORIE_OPOZNIENIA = ["Wcześniej/punkt.", "1-15", "15-30", "30-60", "60+"]
@@ -95,7 +80,7 @@ def preprocess(df, prog_opoznienia=15):
     Przekształca surowy DataFrame lotów w zbiór gotowy pod EDA.
 
     Args:
-        df: surowe dane (kolumny jak w loty_odloty).
+        df: surowe dane.
         prog_opoznienia: próg w minutach dla flagi czy_opozniony.
 
     Returns:
@@ -103,7 +88,7 @@ def preprocess(df, prog_opoznienia=15):
     """
     df = df.copy()
 
-    # 1. Deduplikacja — zachowujemy najświeższy wpis dla danego lotu
+    # Deduplikacja — zachowujemy najświeższy wpis dla danego lotu
     if "ostatnia_aktualizacja" in df.columns:
         df = (
             df.sort_values("ostatnia_aktualizacja")
@@ -111,24 +96,23 @@ def preprocess(df, prog_opoznienia=15):
             .reset_index(drop=True)
         )
 
-    # 2. Flaga odwołania (zamiast usuwania rekordu)
+    # Flaga odwołania - przpisanie do odzielnej "klasy"
     df["czy_odwolany"] = (
         df["status"].astype(str).str.lower().str.contains("odwołany").astype(int)
     )
 
-    # 3. Parsowanie dat
+    # Parsowanie dat
     df["czas_planowany"] = pd.to_datetime(df["czas_planowany"], errors="coerce")
     df["czas_rzeczywisty"] = pd.to_datetime(df["czas_rzeczywisty"], errors="coerce")
     df["data_lotu"] = pd.to_datetime(df["data_lotu"], errors="coerce")
 
-    # 4. Opóźnienie z korektą przejścia przez północ
-    #    (lot planowany ~23:40, start po 00:00 dawał błędnie dużą wartość ujemną)
+    # Opóźnienie z korektą przejścia przez północ
     delta = (df["czas_rzeczywisty"] - df["czas_planowany"]).dt.total_seconds() / 60.0
     delta = delta.mask(delta < -720, delta + 1440)
     df["opoznienie_surowe"] = delta                       # ze znakiem — do rozkładów
     df["opoznienie_minuty"] = delta.clip(lower=0)         # wyzerowane — metryki operacyjne
 
-    # 5. Cechy czasowe
+    # Cechy czasowe
     df["godzina_planowana"] = df["czas_planowany"].dt.hour
     df["dzien_tygodnia_num"] = df["czas_planowany"].dt.dayofweek
     df["dzien_tygodnia"] = pd.Categorical.from_codes(
@@ -145,17 +129,17 @@ def preprocess(df, prog_opoznienia=15):
     df["miesiac"] = df["czas_planowany"].dt.month
     df["numer_tygodnia"] = df["czas_planowany"].dt.isocalendar().week.astype("Int64")
 
-    # 6. Standaryzacja kategorii tekstowych
+    # Standaryzacja kategorii tekstowych
     df["linia_lotnicza"] = df["linia_lotnicza"].astype(str).str.strip().str.upper()
     df["kierunek"] = df["kierunek"].astype(str).str.strip().str.upper()
 
-    # 7. Geografia: kod IATA, współrzędne, dystans od KRK
+    # Geografia: kod IATA, współrzędne, dystans od KRK
     df["kod_kierunku"] = df["kierunek"].apply(_kod_iata)
     wsp = df["kod_kierunku"].apply(_wspolrzedne)
     df[["lat", "lon"]] = pd.DataFrame(wsp.tolist(), index=df.index)
     df["dystans_km"] = _haversine_z_krakowa(df["lat"], df["lon"])
 
-    # 8. Kategoria opóźnienia (kubełki) + flaga opóźnienia operacyjnego
+    # Kategoria opóźnienia (kubełki) + flaga opóźnienia operacyjnego
     df["kategoria_opoznienia"] = pd.cut(
         df["opoznienie_surowe"],
         bins=[-np.inf, 0, 15, 30, 60, np.inf],
@@ -167,7 +151,7 @@ def preprocess(df, prog_opoznienia=15):
         np.nan,
     )
 
-    # 9. Detekcja anomalii — reguła IQR (deterministyczna)
+    # Detekcja anomalii — reguła IQR
     df["czy_anomalia"] = 0
     zr = df["opoznienie_minuty"].dropna()
     if len(zr) > 0:
@@ -175,7 +159,7 @@ def preprocess(df, prog_opoznienia=15):
         prog_anom = q3 + 1.5 * (q3 - q1)
         df["czy_anomalia"] = (df["opoznienie_minuty"] > prog_anom).fillna(False).astype(int)
 
-    # 10. Usunięcie kolumn surowych/technicznych niepotrzebnych w EDA
+    # Usunięcie kolumn surowych/technicznych niepotrzebnych w EDA
     do_usuniecia = [
         "id", "ostatnia_aktualizacja", "numer_lotu",
         "czas_planowany", "czas_rzeczywisty", "status", "lat", "lon",
@@ -185,7 +169,7 @@ def preprocess(df, prog_opoznienia=15):
     return df
 
 
-def uruchom(db_path=DOMYSLNA_BAZA, csv_path=None, wyjscie=DOMYSLNE_WYJSCIE, prog_opoznienia=15):
+def run(db_path=DOMYSLNA_BAZA, csv_path=None, wyjscie=DOMYSLNE_WYJSCIE, prog_opoznienia=15):
     """Wczytuje dane (z bazy lub CSV), przetwarza i zapisuje zbiór gotowy pod EDA."""
     if csv_path:
         print(f"Wczytuję dane z CSV: {csv_path}")
@@ -195,15 +179,15 @@ def uruchom(db_path=DOMYSLNA_BAZA, csv_path=None, wyjscie=DOMYSLNE_WYJSCIE, prog
         surowe = wczytaj_z_bazy(db_path)
     print(f"  rekordów surowych: {len(surowe)}")
 
-    gotowe = preprocess(surowe, prog_opoznienia=prog_opoznienia)
-    print(f"  rekordów po przetworzeniu: {len(gotowe)} "
-          f"(odwołane: {int(gotowe['czy_odwolany'].sum())}, "
-          f"anomalie: {int(gotowe['czy_anomalia'].sum())})")
+    ready = preprocess(surowe, prog_opoznienia=prog_opoznienia)
+    print(f"  rekordów po przetworzeniu: {len(ready)} "
+          f"(odwołane: {int(ready['czy_odwolany'].sum())}, "
+          f"anomalie: {int(ready['czy_anomalia'].sum())})")
 
-    gotowe.to_csv(wyjscie, index=False, encoding="utf-8")
+    ready.to_csv(wyjscie, index=False, encoding="utf-8")
     print(f"Zapisano: {wyjscie}")
-    return gotowe
+    return ready
 
 
 if __name__ == "__main__":
-    uruchom()
+    run()

@@ -1,15 +1,3 @@
-"""
-Eksploracyjna Analiza Danych (EDA) — odloty z lotniska Kraków-Balice (KRK).
-
-Generuje 15 wykresów na podstawie zbioru przygotowanego przez preprocessing.py
-(dataset_eda_ready.csv). Wykresy łączą ulepszone wersje 7 pierwotnych wykresów
-z ../eda.py oraz nowe wizualizacje.
-
-Wspólne zasady: mediana zamiast średniej (rozkład skośny), odsetki zamiast liczb
-bezwzględnych przy porównaniach, próg minimalnej liczby lotów + top-N dla linii,
-opoznienie_surowe do rozkładów / opoznienie_minuty do metryk operacyjnych.
-"""
-
 import os
 
 import numpy as np
@@ -27,15 +15,14 @@ DNI_PL = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", 
 PORY_DNIA = ["Rano", "Popołudnie", "Wieczór", "Noc"]
 KATEGORIE_OPOZNIENIA = ["Wcześniej/punkt.", "1-15", "15-30", "30-60", "60+"]
 
-# daty z danymi syntetycznymi (note.txt) — oznaczane na szeregu czasowym
 DATY_SYNTETYCZNE = ["2026-04-18", "2026-04-19", "2026-04-21", "2026-04-22", "2026-04-23"]
 
 TOP_N = 15        # ile linii pokazywać na wykresach per przewoźnik
 MIN_LOTOW = 30    # próg minimalnej liczby lotów dla porównań
 
 
-def wczytaj_dane(file_path=DOMYSLNE_WEJSCIE):
-    """Wczytuje zbiór EDA i przywraca uporządkowane typy kategoryczne (gubione w CSV)."""
+def read_data(file_path=DOMYSLNE_WEJSCIE):
+    """Wczytuje zbiór EDA i przywraca uporządkowane typy kategoryczne"""
     df = pd.read_csv(file_path)
     df["data_lotu"] = pd.to_datetime(df["data_lotu"])
     df["pora_dnia"] = pd.Categorical(df["pora_dnia"], categories=PORY_DNIA, ordered=True)
@@ -59,9 +46,7 @@ def _zapisz(fig_name, output_dir):
     plt.close()
 
 
-# --------------------------------------------------------------------------- #
 #  1. Rozkład opóźnień (histogram + KDE)
-# --------------------------------------------------------------------------- #
 def plot_01_rozklad_opoznien(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     plt.figure(figsize=(11, 6))
@@ -76,9 +61,7 @@ def plot_01_rozklad_opoznien(df, output_dir):
     _zapisz("01_rozklad_opoznien.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  2. ECDF opóźnień
-# --------------------------------------------------------------------------- #
 def plot_02_ecdf_opoznien(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     plt.figure(figsize=(11, 6))
@@ -92,9 +75,7 @@ def plot_02_ecdf_opoznien(df, output_dir):
     _zapisz("02_ecdf_opoznien.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  3. Mediana opóźnienia wg linii (top-N, CI) — ulepszony plot_1
-# --------------------------------------------------------------------------- #
+#  3. Mediana opóźnienia wg linii (top-N, CI)
 def plot_03_mediana_opoznienia_linii(df, output_dir):
     top = _top_linie(df)
     d = df[(df["czy_odwolany"] == 0) & (df["linia_lotnicza"].isin(top))]
@@ -111,9 +92,7 @@ def plot_03_mediana_opoznienia_linii(df, output_dir):
     _zapisz("03_mediana_opoznienia_linii.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  4. Odsetek opóźnionych (%) wg linii (top-N)
-# --------------------------------------------------------------------------- #
 def plot_04_odsetek_opoznionych_linii(df, output_dir):
     top = _top_linie(df)
     d = df[(df["czy_odwolany"] == 0) & (df["linia_lotnicza"].isin(top))]
@@ -134,9 +113,7 @@ def plot_04_odsetek_opoznionych_linii(df, output_dir):
     _zapisz("04_odsetek_opoznionych_linii.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  5. Boxplot opóźnień wg linii (top-N, z anomaliami) — ulepszony plot_5
-# --------------------------------------------------------------------------- #
+#  5. Boxplot opóźnień wg linii (top-N, z anomaliami)
 def plot_05_boxplot_linii(df, output_dir):
     top = _top_linie(df)
     d = df[(df["czy_odwolany"] == 0) & (df["linia_lotnicza"].isin(top))]
@@ -157,9 +134,7 @@ def plot_05_boxplot_linii(df, output_dir):
     _zapisz("05_boxplot_linii.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  6. Odsetek opóźnionych wg pory dnia — ulepszony plot_2
-# --------------------------------------------------------------------------- #
+#  6. Odsetek opóźnionych wg pory dnia
 def plot_06_odsetek_opoznionych_pora(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     plt.figure(figsize=(9, 6))
@@ -175,9 +150,7 @@ def plot_06_odsetek_opoznionych_pora(df, output_dir):
     _zapisz("06_odsetek_opoznionych_pora.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  7. Udział kategorii opóźnień wg pory dnia (stacked 100%)
-# --------------------------------------------------------------------------- #
 def plot_07_udzial_kategorii_pora(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     tab = pd.crosstab(d["pora_dnia"], d["kategoria_opoznienia"], normalize="index") * 100
@@ -192,9 +165,7 @@ def plot_07_udzial_kategorii_pora(df, output_dir):
     _zapisz("07_udzial_kategorii_pora.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  8. Kaskadowość: rozkład opóźnień per godzina — ulepszony plot_6
-# --------------------------------------------------------------------------- #
+#  8. Kaskadowość: rozkład opóźnień per godzina
 def plot_08_kaskadowosc_godzina(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     plt.figure(figsize=(14, 6))
@@ -210,9 +181,7 @@ def plot_08_kaskadowosc_godzina(df, output_dir):
     _zapisz("08_kaskadowosc_godzina.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  9. Wolumen godzinowy vs mediana opóźnienia (dwie osie Y)
-# --------------------------------------------------------------------------- #
 def plot_09_wolumen_vs_opoznienie(df, output_dir):
     d = df[df["czy_odwolany"] == 0]
     agg = d.groupby("godzina_planowana", observed=True).agg(
@@ -241,9 +210,7 @@ def plot_09_wolumen_vs_opoznienie(df, output_dir):
     _zapisz("09_wolumen_vs_opoznienie.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  10. Heatmapa dzień tygodnia × godzina (mediana) — zastępuje pierwotny plot_4
-# --------------------------------------------------------------------------- #
+#  10. Heatmapa dzień tygodnia × godzina (mediana)
 def plot_10_heatmapa_dzien_godzina(df, output_dir):
     d = df[(df["czy_odwolany"] == 0) & (df["czy_anomalia"] == 0)]
     pivot = d.pivot_table(index="dzien_tygodnia", columns="godzina_planowana",
@@ -260,9 +227,7 @@ def plot_10_heatmapa_dzien_godzina(df, output_dir):
     _zapisz("10_heatmapa_dzien_godzina.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  11. Współczynnik odwołań wg kierunku (rate) — ulepszony plot_3
-# --------------------------------------------------------------------------- #
+#  11. Współczynnik odwołań wg kierunku (rate)
 def plot_11_wspolczynnik_odwolan_kierunek(df, output_dir, top_n=10):
     agg = (
         df.groupby("kierunek")
@@ -283,9 +248,7 @@ def plot_11_wspolczynnik_odwolan_kierunek(df, output_dir, top_n=10):
     _zapisz("11_wspolczynnik_odwolan_kierunek.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  12. Współczynnik odwołań wg linii (rate)
-# --------------------------------------------------------------------------- #
 def plot_12_wspolczynnik_odwolan_linii(df, output_dir):
     agg = (
         df.groupby("linia_lotnicza")
@@ -306,9 +269,7 @@ def plot_12_wspolczynnik_odwolan_linii(df, output_dir):
     _zapisz("12_wspolczynnik_odwolan_linii.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  13. Top kierunki wg mediany opóźnienia
-# --------------------------------------------------------------------------- #
 def plot_13_top_kierunki_opoznienie(df, output_dir, top_n=15):
     d = df[(df["czy_odwolany"] == 0) & (df["czy_anomalia"] == 0)]
     agg = (
@@ -329,9 +290,7 @@ def plot_13_top_kierunki_opoznienie(df, output_dir, top_n=15):
     _zapisz("13_top_kierunki_opoznienie.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
 #  14. Opóźnienie vs odległość
-# --------------------------------------------------------------------------- #
 def plot_14_opoznienie_vs_dystans(df, output_dir):
     d = df[(df["czy_odwolany"] == 0) & (df["czy_anomalia"] == 0)].dropna(subset=["dystans_km"])
     biny = pd.cut(d["dystans_km"], bins=range(0, int(d["dystans_km"].max()) + 250, 250))
@@ -351,9 +310,7 @@ def plot_14_opoznienie_vs_dystans(df, output_dir):
     _zapisz("14_opoznienie_vs_dystans.png", output_dir)
 
 
-# --------------------------------------------------------------------------- #
-#  15. Szereg czasowy + krocząca mediana 7-dniowa — ulepszony plot_7
-# --------------------------------------------------------------------------- #
+#  15. Szereg czasowy + krocząca mediana 7-dniowa
 def plot_15_trend_czasowy(df, output_dir):
     trend = df.groupby("data_lotu").agg(
         mediana_opoznienia=("opoznienie_minuty", "median"),
@@ -413,7 +370,7 @@ WYKRESY = [
 def main(file_path=DOMYSLNE_WEJSCIE, output_dir=FOLDER_WYKRESOW):
     os.makedirs(output_dir, exist_ok=True)
     print("Wczytywanie zbioru EDA...")
-    df = wczytaj_dane(file_path)
+    df = read_data(file_path)
     print(f"  rekordów: {len(df)}")
     print("Generowanie wykresów...")
     for fn in WYKRESY:
