@@ -47,20 +47,17 @@ class TrainingClass:
 
     def train_test_cv(self, balance: bool, resampling: str = 'smote') -> None:
         """
-        Run 5-fold stratified cross-validation over all models, then retrain
-        the best model on the full dataset and save it with joblib.
-
         All data manipulation (preprocessing, encoding, per-fold scaling,
         per-fold resampling) is delegated to FlightsTransform — this method
         contains only training and evaluation logic.
 
         Args:
-            balance:    If True, apply resampling inside each training fold.
-            resampling: Resampling method forwarded to FlightsTransform.get_resampler().
-                        One of 'smote', 'undersample', 'smoteenn', 'smotetomek'.
-                        Only used when balance=True.
+            balance:    if ture -- resmaple in each fold 
+            resampling: forwards to FlightsTransform.get_resampler().
+                        either 'smote', 'undersample', 'smoteenn', 'smotetomek'.
+                        only used when balanced = True
         """
-        # --- data loading (preprocessing + encoding only; no scaling/resampling yet) ---
+        # loading data -- no resampling/scaling yet 
         ft = FlightsTransform(self.PATH)
         X, y = ft.load_xy(threshold_minutes=self.threshold, encoding=self.encoding)
 
@@ -72,7 +69,7 @@ class TrainingClass:
 
             f1_list, bal_acc_list = [], []
 
-            # class-weight fallback when SMOTE is off — keeps forest models viable
+            # if resampling is off turn balancing on for tree based models in order not to break them entirely
             if not balance:
                 if "Random Forest" in model_name:
                     model.set_params(class_weight='balanced')
@@ -83,7 +80,7 @@ class TrainingClass:
                 X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
                 y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-                # --- per-fold scaling (fit on train only to prevent leakage) ---
+                # per-fold scaling 
                 scaler = ft.get_scaler()
                 X_train = pd.DataFrame(
                     scaler.fit_transform(X_train),
@@ -94,7 +91,7 @@ class TrainingClass:
                     columns=scaler.get_feature_names_out(),
                 )
 
-                # --- per-fold resampling (training split only; test stays untouched) ---
+                # per-fold resampling -- of course only for training
                 if balance:
                     resampler = ft.get_resampler(resampling)
                     X_train, y_train = resampler.fit_resample(X_train, y_train)
@@ -116,7 +113,7 @@ class TrainingClass:
                 "bal_acc_mean":    np.mean(bal_acc_list),
             }
 
-        # --- cross-validation summary ---
+        # cross validation summary 
         print("\n" + "=" * 50)
         print("FINAL CROSS-VALIDATION SUMMARY")
         print("=" * 50)
@@ -126,7 +123,7 @@ class TrainingClass:
             print(f"  * Mean Balanced Accuracy: {metrics['bal_acc_mean']:.4f}")
             print("-" * 30)
 
-        # --- select best model and retrain on full dataset ---
+        # -select best model and train the "prod" 
         best_name = max(global_results, key=lambda k: global_results[k]['f1_mean'])
         print(f"\nBest model based on F1: {best_name}. Training production version...")
 
@@ -142,17 +139,18 @@ class TrainingClass:
             X_final, y_final = ft.get_resampler(resampling).fit_resample(X_final, y_final)
 
         final_model.fit(X_final, y_final)
-
-        joblib.dump({'model': final_model, 'scaler': final_scaler}, 'flights_production_model.joblib')
-        print("Production model saved as 'flights_production_model.joblib'!")
+        
+        # dumping model AND SCALER to joblib 
+        # joblib.dump({'model': final_model, 'scaler': final_scaler}, 'flights_production_model.joblib')
+        # print("Production model saved as 'flights_production_model.joblib'!")
 
 
 if __name__ == "__main__":
     trainer = TrainingClass(
-        data_path="dataset_loty_krakow_20260523_195511.csv",
-        threshold=15,
-        encoding='onehot',
+        data_path="dataset_loty_krakow_20260521_213240.csv",
+        threshold=25,
+        encoding='label',
     )
-    trainer.train_test_cv(balance=True, resampling='undersample')
+    trainer.train_test_cv(balance=True, resampling='smoteenn')
     # The best for now is onehot + balance=true + undersample (Random Forest)
     # Maybe OOT or another skf costs trying

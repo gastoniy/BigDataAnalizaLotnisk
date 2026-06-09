@@ -1,8 +1,10 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime 
+from typing import Literal
 import airportsdata
 from time import sleep
+from pathlib import Path
 
 from sklearn.preprocessing import (
     OneHotEncoder, OrdinalEncoder,
@@ -16,11 +18,14 @@ from imblearn.under_sampling import RandomUnderSampler
 from imblearn.combine import SMOTETomek, SMOTEENN
 
 class FlightsTransform:
+    Encoding = Literal['onehot', 'label']
+    ResamplingMethod = Literal['smote', 'undersample', 'smoteenn', 'smotetomek']
+    ENCODING_OPTIONS = ('onehot', 'label')
+    RESAMPLING_OPTIONS = ('smote', 'undersample', 'smoteenn', 'smotetomek')
+
     def __init__(self, datapath: str):
         self.datapath = datapath
-
         self.df = pd.read_csv(datapath)
-
         self.aerodata = airportsdata.load('IATA')
 
         # defining top 37 airlines based on long-term observation
@@ -135,15 +140,7 @@ class FlightsTransform:
         return self.df
 
     def one_hot_encode(self) -> pd.DataFrame:
-        """
-        Step 2a — one-hot encode the 'linia_lotnicza' column.
-        Produces one binary column per airline in top_airlines; unknown airlines
-        get all zeros (handle_unknown='ignore').
-        Requires preprocess() to have been called first.
 
-        Returns:
-            DataFrame with 'linia_lotnicza' replaced by OHE columns.
-        """
         if 'linia_lotnicza' not in self.df.columns:
             raise ValueError("Column 'linia_lotnicza' not found. Run preprocess() first.")
 
@@ -182,31 +179,7 @@ class FlightsTransform:
     _MM_COLS     = ['dzien_miesiaca']    # bounded uniform, no outliers → [0, 1]
 
     def get_scaler(self) -> ColumnTransformer:
-        """
-        Factory — returns a fresh, unfitted ColumnTransformer with the column-specific
-        scaling strategy for this dataset.
 
-        Intended use: call once per CV fold so each fold fits its own scaler on
-        training data only, preventing leakage from the test split.
-
-            scaler = ft.get_scaler()
-            X_train = pd.DataFrame(
-                scaler.fit_transform(X_train), columns=scaler.get_feature_names_out()
-            )
-            X_test = pd.DataFrame(
-                scaler.transform(X_test), columns=scaler.get_feature_names_out()
-            )
-
-        Scaling strategy:
-            StandardScaler   lat            — near-normal (skew −0.14), few outliers
-            RobustScaler     lon, elev      — skewed / heavy outliers; median+IQR
-            log1p→Standard   dystans_km     — extreme right skew (+4.20); log compression
-                                              via FunctionTransformer inside a Pipeline
-            MinMaxScaler     dzien_miesiaca — bounded [1, 30], uniform, zero outliers
-
-        Returns:
-            Unfitted ColumnTransformer ready for fit_transform / transform.
-        """
         log_pipeline = Pipeline([
             ('log1p',   FunctionTransformer(np.log1p, validate=False, feature_names_out='one-to-one')),
             ('standard', StandardScaler()),
@@ -233,22 +206,8 @@ class FlightsTransform:
             verbose_feature_names_out=False,
         )
 
-    def get_resampler(self, method: str, random_state: int = 42):
-        """
-        Factory — returns a fresh, unfitted imblearn sampler for the given method.
+    def get_resampler(self, method: ResamplingMethod, random_state: int = 42):
 
-        Intended use: call once per CV fold so each fold's sampler is independent.
-
-            resampler = ft.get_resampler('smote')
-            X_train, y_train = resampler.fit_resample(X_train, y_train)
-
-        Args:
-            method:       One of 'smote', 'undersample', 'smoteenn', 'smotetomek'.
-            random_state: Seed for reproducibility (default 42).
-
-        Returns:
-            Unfitted sampler ready for fit_resample.
-        """
         if method not in self._RESAMPLE_METHODS:
             raise ValueError(
                 f"Unknown resampling method '{method}'. "
@@ -264,22 +223,9 @@ class FlightsTransform:
     def load_xy(
         self,
         threshold_minutes: int = 15,
-        encoding: str = 'onehot',
+        encoding: Encoding = 'onehot',
     ) -> tuple[pd.DataFrame, pd.Series]:
-        """
-        Convenience loader — runs preprocess() and the chosen encoding step, then
-        splits the result into features X and target y.
 
-        Scaling and resampling are intentionally excluded: both must be fitted
-        inside each CV fold on training data only to prevent leakage.
-
-        Args:
-            threshold_minutes: Passed through to preprocess().
-            encoding:          'onehot' (default) or 'label'.
-
-        Returns:
-            (X, y) where X is the feature DataFrame and y is the binary target Series.
-        """
         if encoding not in ('onehot', 'label'):
             raise ValueError(f"Unknown encoding '{encoding}'. Choose 'onehot' or 'label'.")
 
@@ -293,17 +239,7 @@ class FlightsTransform:
         return self.df.drop('czy_opozniony', axis=1), self.df['czy_opozniony']
 
     def scale(self) -> pd.DataFrame:
-        """
-        Step 3 (optional) — apply column-specific scaling to the full dataset in-place.
-        Uses get_scaler() internally so the strategy is defined in one place.
-        Stores the fitted scaler in self.scaler for serialisation or reuse.
 
-        Note: this method is for whole-dataset transformations (e.g. saving a
-        pre-scaled CSV). For CV training use get_scaler() per fold instead.
-
-        Returns:
-            DataFrame with scaled continuous columns; all other columns unchanged.
-        """
         if 'linia_lotnicza' in self.df.columns:
             raise ValueError(
                 "Raw 'linia_lotnicza' column still present. "
@@ -323,32 +259,7 @@ class FlightsTransform:
 
     _RESAMPLE_METHODS = ('smote', 'undersample', 'smoteenn', 'smotetomek')
 
-    def resample(self, method: str, random_state: int = 42) -> pd.DataFrame:
-        """
-        Step 3 (optional) — rebalance the dataset by over- or under-sampling.
-        Must be called after an encoding step (one_hot_encode or label_encode),
-        because all features must be numeric before resampling.
-
-        Available methods:
-            'smote'       — SMOTE oversampling: synthesises new minority-class
-                            rows by interpolating between existing neighbours.
-                            Increases dataset size.
-            'undersample' — RandomUnderSampler: randomly removes majority-class
-                            rows until classes are balanced.
-                            Decreases dataset size.
-            'smoteenn'    — SMOTEENN: SMOTE followed by Edited Nearest Neighbours
-                            cleaning. Adds synthetic minority samples then removes
-                            noisy / borderline samples from both classes.
-            'smotetomek'  — SMOTETomek: SMOTE followed by Tomek Links removal.
-                            Gentler cleaning than ENN; keeps more samples overall.
-
-        Args:
-            method:       One of 'smote', 'undersample', 'smoteenn', 'smotetomek'.
-            random_state: Seed for reproducibility (default 42).
-
-        Returns:
-            Resampled DataFrame; self.df is updated in-place.
-        """
+    def resample(self, method: ResamplingMethod, random_state: int = 42) -> pd.DataFrame:
         if method not in self._RESAMPLE_METHODS:
             raise ValueError(
                 f"Unknown resampling method '{method}'. "
@@ -382,33 +293,12 @@ class FlightsTransform:
     def transform(
         self,
         threshold_minutes: int = 15,
-        encoding: str = 'onehot',
+        encoding: Encoding = 'onehot',
         scaling: bool = False,
-        resampling: str = None,
+        resampling: ResamplingMethod | None = None,
         random_state: int = 42,
     ) -> pd.DataFrame:
-        """
-        Convenience orchestrator that runs the full pipeline in one call.
 
-        Pipeline order:
-            preprocess() -> encode() -> [scale()] -> [resample()]
-
-        Scaling is applied before resampling so that SMOTE interpolates in the
-        already-normalised feature space, which produces more realistic synthetic
-        samples for distance-sensitive columns such as dystans_km and elev.
-
-        Args:
-            threshold_minutes: Passed through to preprocess().
-            encoding:          'onehot' (default) or 'label'.
-            scaling:           If True, run scale() after encoding (default False).
-            resampling:        Optional resampling step. One of 'smote',
-                               'undersample', 'smoteenn', 'smotetomek', or None
-                               (default — no resampling).
-            random_state:      Seed forwarded to resample() when resampling is set.
-
-        Returns:
-            Fully transformed DataFrame.
-        """
         if encoding not in ('onehot', 'label'):
             raise ValueError(f"Unknown encoding '{encoding}'. Choose 'onehot' or 'label'.")
         if resampling is not None and resampling not in self._RESAMPLE_METHODS:
@@ -432,48 +322,41 @@ class FlightsTransform:
 
         return self.df
 
-    def save(self):
+    def save(
+        self,
+        encoding: Encoding,
+        resampling: ResamplingMethod,
+        threshold: int,
+        path: str | Path = ".",
+    ) -> None:
         savedate = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"sanitized_pandas_{savedate}.csv"
-        self.df.to_csv(filename, index=False, encoding="utf-8")
-        print(f"Data saved as: {filename}")
+        filename = f"sanitized_pandas_{savedate}_{encoding}_{resampling}_{threshold}.csv"
+
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)  # create folder if it doesn't exist
+
+        full_path = path / filename
+
+        self.df.to_csv(full_path, index=False, encoding="utf-8")
+        print(f"Data saved as: {full_path}")
 
 if __name__ == "__main__":
-    # --- OHE, no scaling, no resampling (default) ---
-    transformer = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    data_ohe = transformer.transform(threshold_minutes=15, encoding='onehot')
-    # transformer.save()
-    print("OHE sample:")
-    print(data_ohe.head(3))
-
-    # --- label encoding + scaling (step-by-step) ---
-    transformer2 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    transformer2.preprocess(threshold_minutes=15)
-    transformer2.label_encode()
-    data_scaled = transformer2.scale()
-    # transformer2.save()
-    print("\nLabel + scaled sample (continuous cols):")
-    print(data_scaled[['lat', 'lon', 'elev', 'dystans_km', 'dzien_miesiaca']].describe().round(3))
-
-    # --- OHE + scaling + Under (full pipeline via transform) ---
-    transformer3 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    data_full = transformer3.transform(
-        threshold_minutes=15,
-        encoding='onehot',
-        scaling=True,
-        resampling='undersample',
-    )
-    transformer3.save()
-    print("\nOHE + scaled + Under class distribution:")
-    print(data_full['czy_opozniony'].value_counts())
-    sleep(1)
-
-    # --- label encoding + undersampling, no scaling ---
-    transformer4 = FlightsTransform("dataset_loty_krakow_20260523_195511.csv")
-    transformer4.preprocess(threshold_minutes=15)
-    transformer4.label_encode()
-    data_under = transformer4.resample(method='undersample')
-    transformer4.save()
-    print("\nLabel + undersample class distribution:")
-    print(data_under['czy_opozniony'].value_counts())
-    sleep(1)
+    tester = FlightsTransform("dataset_loty_krakow_20260521_213240.csv")
+    iterations = 3 # each undersampling iteration will get different random state for objective variability assessment, while other encoding/resampling combinations will be repeated for consistency check
+    stepup = 5
+    for i in range(5,30,5):
+        print(f"Iteration for threshold {i} minutes")
+        for encoding_option in tester.ENCODING_OPTIONS:
+            for resampling_option in tester.RESAMPLING_OPTIONS:
+                print(f"  with encoding={encoding_option} and resampling={resampling_option}")
+                for _ in range(iterations):
+                    tester.transform(
+                        threshold_minutes=i,
+                        encoding=encoding_option,
+                        scaling=True,
+                        resampling=resampling_option,
+                        random_state=None,  # use different random seed each time for undersampling 
+                    )
+                    tester.save(encoding=encoding_option, resampling=resampling_option, threshold=i, path="modeltests")
+                    sleep(1)
+        
