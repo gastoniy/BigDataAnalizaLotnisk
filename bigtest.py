@@ -37,25 +37,23 @@ classifiers = {
     )
 }
 
-# 3. Walidacja krzyżowa (Rundy / Foldy)
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 print("\n--- ROZPOCZĘCIE EWALUACJI (5-Fold Cross-Validation) ---")
 for name, model in classifiers.items():
-    # Liczymy F1-score dla każdego z 5 modeli
+    # f1 for each fold 
     scores = cross_val_score(model, X, y, cv=cv, scoring='f1', n_jobs=-1)
     print(f"{name:22} -> Średni F1-Score: {scores.mean():.4f} (+/- {scores.std():.3f})")
 
-# 4. Finalny trening i zapis stanu modeli do plików .joblib
 print("\n--- TRENOWANIE FINALNE I ZAPIS STANU ---")
 for name, model in classifiers.items():
     print(f"Trenowanie i zamrażanie modelu: {name}...")
     model.fit(X, y)
     
-    # Tworzenie bezpiecznej nazwy pliku (bez spacji i nawiasów)
+    # name sanitization for filename
     safe_filename = name.lower().replace(" ", "_").replace("(", "").replace(")", "")
     joblib.dump(model, f'model_{safe_filename}.joblib')
 
-# Zapisujemy koder One-Hot, aby skrypt strumieniowy pasował do każdego z tych 5 modeli
+# dump onehot encoder 
 joblib.dump(transformer.encoder, 'airline_one_hot_encoder.joblib')
 print("\nWszystkie modele oraz encoder zostały pomyślnie zapisane na dysku!")
