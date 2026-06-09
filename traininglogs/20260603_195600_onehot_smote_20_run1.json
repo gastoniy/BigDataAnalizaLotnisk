@@ -1,0 +1,184 @@
+{
+  "source_file": "dataset_loty_krakow_20260603_213208.csv",
+  "dataset": {
+    "encoding": "onehot",
+    "resampling": "smote",
+    "threshold": 20,
+    "row_count": 6642,
+    "feature_count": 49,
+    "run_index": 1,
+    "cv_random_state": 42
+  },
+  "models": {
+    "Random Forest": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.41935483870967744,
+          "balanced_accuracy": 0.6251940658961532
+        },
+        {
+          "fold": 2,
+          "f1": 0.39338235294117646,
+          "balanced_accuracy": 0.6108092308282062
+        },
+        {
+          "fold": 3,
+          "f1": 0.4276094276094276,
+          "balanced_accuracy": 0.6290178356809769
+        },
+        {
+          "fold": 4,
+          "f1": 0.44155844155844154,
+          "balanced_accuracy": 0.6374180728490617
+        },
+        {
+          "fold": 5,
+          "f1": 0.45868465430016864,
+          "balanced_accuracy": 0.6486595195743794
+        }
+      ],
+      "mean_f1": 0.4281179430237783,
+      "mean_balanced_accuracy": 0.6302197449657555,
+      "std_f1": 0.021902432023168043,
+      "std_balanced_accuracy": 0.01261198879682275
+    },
+    "AdaBoost": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.4117647058823529,
+          "balanced_accuracy": 0.6108715235849961
+        },
+        {
+          "fold": 2,
+          "f1": 0.40897097625329815,
+          "balanced_accuracy": 0.6081066835336285
+        },
+        {
+          "fold": 3,
+          "f1": 0.4152431011826544,
+          "balanced_accuracy": 0.6133663445667676
+        },
+        {
+          "fold": 4,
+          "f1": 0.40476190476190477,
+          "balanced_accuracy": 0.6051696232552922
+        },
+        {
+          "fold": 5,
+          "f1": 0.4381188118811881,
+          "balanced_accuracy": 0.630828646058683
+        }
+      ],
+      "mean_f1": 0.4157718999922797,
+      "mean_balanced_accuracy": 0.6136685641998735,
+      "std_f1": 0.011689262273237359,
+      "std_balanced_accuracy": 0.009006105662648901
+    },
+    "XGBoost": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.48531289910600256,
+          "balanced_accuracy": 0.6701838115500355
+        },
+        {
+          "fold": 2,
+          "f1": 0.4816753926701571,
+          "balanced_accuracy": 0.6667337511739788
+        },
+        {
+          "fold": 3,
+          "f1": 0.48429319371727747,
+          "balanced_accuracy": 0.6693588449273272
+        },
+        {
+          "fold": 4,
+          "f1": 0.48717948717948717,
+          "balanced_accuracy": 0.6721792221527811
+        },
+        {
+          "fold": 5,
+          "f1": 0.5018359853121175,
+          "balanced_accuracy": 0.6860166979151643
+        }
+      ],
+      "mean_f1": 0.4880593915970083,
+      "mean_balanced_accuracy": 0.6728944655438573,
+      "std_f1": 0.007114094122875189,
+      "std_balanced_accuracy": 0.006789804345937179
+    },
+    "Gaussian NB (GNB)": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.38095238095238093,
+          "balanced_accuracy": 0.5254537787744619
+        },
+        {
+          "fold": 2,
+          "f1": 0.3844121532364597,
+          "balanced_accuracy": 0.5272986027255476
+        },
+        {
+          "fold": 3,
+          "f1": 0.3940298507462687,
+          "balanced_accuracy": 0.5559540406711216
+        },
+        {
+          "fold": 4,
+          "f1": 0.3912175648702595,
+          "balanced_accuracy": 0.5401294809544412
+        },
+        {
+          "fold": 5,
+          "f1": 0.3817097415506958,
+          "balanced_accuracy": 0.5244283127413746
+        }
+      ],
+      "mean_f1": 0.38646433827121296,
+      "mean_balanced_accuracy": 0.5346528431733895,
+      "std_f1": 0.0052350638771337,
+      "std_balanced_accuracy": 0.012058053218971328
+    },
+    "Neural Network (MLP)": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.4358974358974359,
+          "balanced_accuracy": 0.6312316715542522
+        },
+        {
+          "fold": 2,
+          "f1": 0.42587601078167114,
+          "balanced_accuracy": 0.6222950568301613
+        },
+        {
+          "fold": 3,
+          "f1": 0.45170068027210886,
+          "balanced_accuracy": 0.6430988894764675
+        },
+        {
+          "fold": 4,
+          "f1": 0.4793608521970706,
+          "balanced_accuracy": 0.6650721920420493
+        },
+        {
+          "fold": 5,
+          "f1": 0.47381546134663344,
+          "balanced_accuracy": 0.6614265339807381
+        }
+      ],
+      "mean_f1": 0.453330088098984,
+      "mean_balanced_accuracy": 0.6446248687767338,
+      "std_f1": 0.020772721971937906,
+      "std_balanced_accuracy": 0.01661755594892452
+    }
+  },
+  "winner": {
+    "model": "XGBoost",
+    "mean_f1": 0.4880593915970083,
+    "mean_balanced_accuracy": 0.6728944655438573
+  }
+}
