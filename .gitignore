@@ -1,3 +1,9 @@
-# *.json
+# Python
+__pycache__/
+*.pyc
+
+# środowisko
 Pipfile*
-/html*
+
+# lokalne zrzuty HTML scrapera
+data-scrapping/html/

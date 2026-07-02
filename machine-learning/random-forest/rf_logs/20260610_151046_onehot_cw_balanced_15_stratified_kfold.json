@@ -1,0 +1,67 @@
+{
+  "source_file": "dataset_loty_krakow_20260610_165348.csv",
+  "dataset": {
+    "encoding": "onehot",
+    "resampling": "cw_balanced",
+    "threshold": 15,
+    "row_count": 6863,
+    "feature_count": 49,
+    "run_index": 1,
+    "cv_random_state": 42
+  },
+  "experiment": "imbalance",
+  "validation_scheme": "stratified_kfold",
+  "strategy": {
+    "label": "cw_balanced",
+    "class_weight": "balanced",
+    "resampler": null
+  },
+  "rf_params": {
+    "n_estimators": 200,
+    "min_samples_leaf": 4,
+    "max_features": "log2",
+    "max_depth": 25,
+    "criterion": "entropy",
+    "class_weight": "balanced"
+  },
+  "models": {
+    "Random Forest": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.6043613707165109,
+          "balanced_accuracy": 0.7056624269140854
+        },
+        {
+          "fold": 2,
+          "f1": 0.5750528541226215,
+          "balanced_accuracy": 0.6830951003883334
+        },
+        {
+          "fold": 3,
+          "f1": 0.5477178423236515,
+          "balanced_accuracy": 0.6600818465037837
+        },
+        {
+          "fold": 4,
+          "f1": 0.572605561277034,
+          "balanced_accuracy": 0.6798543978995106
+        },
+        {
+          "fold": 5,
+          "f1": 0.5991649269311065,
+          "balanced_accuracy": 0.7015423539142704
+        }
+      ],
+      "mean_f1": 0.5797805110741849,
+      "mean_balanced_accuracy": 0.6860472251239967,
+      "std_f1": 0.020404997481595202,
+      "std_balanced_accuracy": 0.016408060177067474
+    }
+  },
+  "winner": {
+    "model": "Random Forest",
+    "mean_f1": 0.5797805110741849,
+    "mean_balanced_accuracy": 0.6860472251239967
+  }
+}

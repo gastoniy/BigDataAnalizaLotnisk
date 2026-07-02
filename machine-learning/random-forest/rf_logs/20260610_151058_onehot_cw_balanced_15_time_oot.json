@@ -1,0 +1,49 @@
+{
+  "source_file": "dataset_loty_krakow_20260610_165348.csv",
+  "dataset": {
+    "encoding": "onehot",
+    "resampling": "cw_balanced",
+    "threshold": 15,
+    "row_count": 6863,
+    "feature_count": 49,
+    "run_index": 1,
+    "cv_random_state": 42,
+    "oot_train_rows": 5490,
+    "oot_test_rows": 1373
+  },
+  "experiment": "validation",
+  "validation_scheme": "time_oot",
+  "strategy": {
+    "label": "cw_balanced",
+    "class_weight": "balanced",
+    "resampler": null
+  },
+  "rf_params": {
+    "n_estimators": 200,
+    "min_samples_leaf": 4,
+    "max_features": "log2",
+    "max_depth": 25,
+    "criterion": "entropy",
+    "class_weight": "balanced"
+  },
+  "models": {
+    "Random Forest": {
+      "folds": [
+        {
+          "fold": 1,
+          "f1": 0.5919701213818861,
+          "balanced_accuracy": 0.6650671379662976
+        }
+      ],
+      "mean_f1": 0.5919701213818861,
+      "mean_balanced_accuracy": 0.6650671379662976,
+      "std_f1": 0.0,
+      "std_balanced_accuracy": 0.0
+    }
+  },
+  "winner": {
+    "model": "Random Forest",
+    "mean_f1": 0.5919701213818861,
+    "mean_balanced_accuracy": 0.6650671379662976
+  }
+}
